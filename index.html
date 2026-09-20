@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Unspoken</title>
+    <style>
+        html, body { 
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background: #000; overflow: hidden; 
+            font-family: 'Georgia', serif; touch-action: none; 
+        }
+        canvas { display: block; position: absolute; top: 0; left: 0; }
+        
+        #header-title {
+            position: fixed; top: 20px; left: 20px;
+            color: #333; font-size: 14px; letter-spacing: 4px;
+            text-transform: uppercase; pointer-events: none; z-index: 10;
+        }
+
+        #log-container {
+            position: fixed; bottom: 80px; left: 20px;
+            width: 280px; max-height: 180px;
+            overflow-y: auto; pointer-events: auto;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px; color: #666; line-height: 1.6;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 20; padding: 10px;
+            border-left: 1px solid #222;
+            touch-action: pan-y;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+        }
+
+        #log-container::-webkit-scrollbar { width: 14px; }
+        #log-container::-webkit-scrollbar-track { background: #000; }
+        #log-container::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+        #log-container::-webkit-scrollbar-button:single-button {
+            background-color: #111; display: block; height: 14px; width: 14px;
+            background-size: 8px; background-repeat: no-repeat; background-position: center;
+        }
+        #log-container::-webkit-scrollbar-button:vertical:decrement {
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='silver'><polygon points='50,20 20,80 80,80'/></svg>");
+        }
+        #log-container::-webkit-scrollbar-button:vertical:increment {
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='silver'><polygon points='20,20 80,20 50,80'/></svg>");
+        }
+
+        #chapter-info {
+            position: fixed; top: 20px; right: 20px;
+            color: #333; font-size: 14px; font-family: monospace; z-index: 10;
+            letter-spacing: 1px; text-transform: uppercase;
+        }
+
+        #ui {
+            position: fixed; bottom: 30px; width: 100%; text-align: center;
+            color: #222; font-size: 13px; letter-spacing: 2px;
+            text-transform: uppercase; pointer-events: none; z-index: 10;
+        }
+
+        #audio-toggle {
+            position: fixed;
+            bottom: 54px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 30;
+            border: 0;
+            background: transparent;
+            color: #bdbdbd;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            letter-spacing: 4px;
+            padding: 18px 24px 12px;
+            cursor: pointer;
+            text-transform: uppercase;
+            text-shadow: 0 0 5px rgba(255,255,255,0.35);
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #audio-toggle::before,
+        #audio-toggle::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            bottom: 3px;
+            pointer-events: none;
+            z-index: -1;
+            border-radius: 48% 52% 55% 45% / 62% 58% 42% 38%;
+            transform-origin: 50% 90%;
+        }
+
+        #audio-toggle::before {
+            width: 34px;
+            height: 46px;
+            background: radial-gradient(ellipse at 50% 76%, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.42) 28%, rgba(255,255,255,0.12) 55%, transparent 72%);
+            filter: blur(2px);
+            animation: whiteFlame 0.9s ease-in-out infinite alternate;
+        }
+
+        #audio-toggle::after {
+            width: 58px;
+            height: 34px;
+            background: radial-gradient(ellipse, rgba(255,255,255,0.2) 0%, transparent 70%);
+            filter: blur(7px);
+            animation: flameGlow 1.5s ease-in-out infinite alternate;
+        }
+
+        #audio-toggle.playing::before {
+            opacity: 0.38;
+            animation-duration: 1.6s;
+        }
+
+        #audio-toggle.playing::after { opacity: 0.28; }
+
+        #audio-toggle:hover { color: #fff; }
+        #audio-toggle:focus-visible { outline: 1px solid #555; outline-offset: 3px; }
+
+        @keyframes whiteFlame {
+            0% { transform: translateX(-50%) scaleX(0.82) scaleY(0.9) rotate(-3deg); opacity: 0.55; }
+            45% { transform: translateX(-48%) scaleX(1.08) scaleY(1.12) rotate(2deg); opacity: 0.95; }
+            100% { transform: translateX(-52%) scaleX(0.92) scaleY(1.28) rotate(-1deg); opacity: 0.72; }
+        }
+
+        @keyframes flameGlow {
+            from { transform: translateX(-50%) scale(0.85); opacity: 0.22; }
+            to { transform: translateX(-50%) scale(1.18); opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div id="header-title"></div>
+    <div id="chapter-info"></div>
+    <div id="log-container"></div>
+    <button id="audio-toggle" type="button" aria-label="Play music" aria-pressed="false">Play</button>
+    <div id="ui">Move slowly to read the story...</div>
+    <canvas id="canvas"></canvas>
+
+    <audio id="loveSong" loop></audio>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const logContainer = document.getElementById('log-container');
+const chapterInfo = document.getElementById('chapter-info');
+const loveSong = document.getElementById('loveSong');
+const ui = document.getElementById('ui');
+const audioToggle = document.getElementById('audio-toggle');
+
+let mouse = { x: -1000, y: -1000, lastMove: Date.now() };
+let isPaused = false;
+let musicEnabled = false;
+let logResumeTimer = null;
+
+const songTracks = {
+    "A small spark in the quiet dark.": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    "An old film still playing in my heart.": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+    "A sea of words drifting toward you.": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+    "A library of things left unspoken.": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+    "A small world finding its sun.": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
+    "A fragile bridge built from honesty.": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
+    "Two stars slowly becoming one.": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3",
+    "A quiet song played on heartstrings.": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
+    "A small leap into the deep blue.": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3",
+    "The open spaces beyond maybe.": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3"
+};
+
+const confessionSets = [
+    ["I've been meaning to tell you something.", "I keep thinking there will be an easier moment.", "There never is.", "So I just keep carrying it around.", "You probably haven't noticed.", "Maybe that's what makes it easier.", "Maybe that's what makes it worse.", "I don't know when this started.", "I only know it didn't stop.", "A small spark in the quiet dark."],
+    ["I remember small things about you.", "Things you probably forgot five minutes later.", "The way you look away when you laugh.", "The way your voice changes when you're tired.", "I don't know why those things stayed with me.", "But they did.", "And somehow the ordinary moments became the ones I replay.", "Nothing happened.", "That might be why I remember everything.", "An old film still playing in my heart."],
+    ["Sometimes I check my phone hoping it's you.", "I pretend I wasn't waiting.", "I'm getting very good at pretending.", "Your name appears and the whole screen feels different.", "It's ridiculous.", "I know.", "But hope has never cared about dignity.", "So I let myself have a little of it.", "Just enough to wonder.", "A sea of words drifting toward you."],
+    ["I notice more than I should.", "When you're quiet for the wrong reason.", "When you say you're fine too quickly.", "When something is bothering you and you change the subject.", "I never know whether to ask.", "So most of the time, I don't.", "I just stay nearby.", "I hope that counts for something.", "I hope you know I'm paying attention.", "A library of things left unspoken."],
+    ["I keep finding reasons to be where you are.", "Sometimes I don't even realize I'm doing it.", "Then suddenly there you are.", "And somehow the room feels easier.", "I've tried to explain that to myself.", "I don't have a good explanation.", "You simply matter more than I expected.", "That scares me a little.", "Maybe because I can't switch it off.", "A small world finding its sun."],
+    ["I think about what would happen if I told you.", "Maybe nothing.", "Maybe everything.", "That's the problem.", "Silence keeps things safe.", "But safe is starting to feel very lonely.", "I'm tired of hiding inside almost.", "I'm tired of saying everything except the thing I mean.", "I just don't know if I'm brave enough yet.", "A fragile bridge built from honesty."],
+    ["Sometimes I think you already know.", "Maybe I've been obvious.", "Maybe you're just being kind.", "Maybe I'm imagining all of it.", "I hate how many maybes there are.", "But when we're together, they get quieter.", "The distance feels smaller.", "Not gone.", "Just small enough to notice.", "Two stars slowly becoming one."],
+    ["I've stopped trying so hard not to care.", "It was exhausting.", "I cared anyway.", "I still do.", "There are things I want to tell you without making them heavy.", "I don't want to turn this into something frightening.", "I just want to stop hiding from what is already true.", "Even if the truth changes nothing.", "At least it would finally be mine to say.", "A quiet song played on heartstrings."],
+    ["I think I'm almost there.", "Not fearless.", "Just tired of running from the same sentence.", "I've carried it through every conversation.", "Every silence.", "Every almost.", "If I say it, something changes.", "If I don't, something changes anyway.", "So maybe this is where I stop pretending I have more time.", "A small leap into the deep blue."],
+    ["I kept waiting for the right moment.", "Maybe now.....", "Maybe us......", "Maybe.....", "....you.", "The open spaces beyond maybe."]
+];
+
+let currentSet = 0, currentLevel = 0, levelProgress = 0, particles = [];
+
+function getStatementsCount(setIndex) {
+    return confessionSets[setIndex].length - 1;
+}
+
+function getTitle(setIndex) {
+    const set = confessionSets[setIndex];
+    return set[set.length - 1];
+}
+
+function setTrackForTitle(titleText) {
+    const track = songTracks[titleText];
+    if (!track) return;
+    if (loveSong.src !== track) {
+        loveSong.src = track;
+        loveSong.load();
+    }
+}
+
+function handleAudioPlay(titleText) {
+    setTrackForTitle(titleText);
+    if (!musicEnabled) return;
+    loveSong.play().catch(() => {
+        musicEnabled = false;
+        updateAudioToggle();
+    });
+}
+
+function updateAudioToggle() {
+    audioToggle.innerText = musicEnabled ? "Pause" : "Play";
+    audioToggle.classList.toggle('playing', musicEnabled);
+    audioToggle.setAttribute('aria-label', musicEnabled ? 'Pause music' : 'Play music');
+    audioToggle.setAttribute('aria-pressed', musicEnabled ? 'true' : 'false');
+}
+
+function toggleAudio(e) {
+    e.stopPropagation();
+    musicEnabled = !musicEnabled;
+    if (musicEnabled) {
+        handleAudioPlay(getTitle(currentSet));
+    } else {
+        loveSong.pause();
+    }
+    updateAudioToggle();
+}
+
+audioToggle.addEventListener('click', toggleAudio);
+audioToggle.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+
+function pauseForLog() {
+    if (logResumeTimer) {
+        clearTimeout(logResumeTimer);
+        logResumeTimer = null;
+    }
+    isPaused = true;
+    ui.innerText = "READING HISTORY...";
+}
+
+function resumeFromLog() {
+    if (logResumeTimer) clearTimeout(logResumeTimer);
+    logResumeTimer = setTimeout(() => {
+        isPaused = false;
+        ui.innerText = "Move slowly to read the story...";
+        logResumeTimer = null;
+    }, 120);
+}
+
+logContainer.addEventListener('mouseenter', pauseForLog);
+logContainer.addEventListener('mouseleave', resumeFromLog);
+logContainer.addEventListener('touchstart', pauseForLog, { passive: true });
+logContainer.addEventListener('touchend', resumeFromLog, { passive: true });
+logContainer.addEventListener('touchcancel', resumeFromLog, { passive: true });
+
+class Particle {
+    constructor(char, i) {
+        this.char = char;
+        this.x = Math.random() * window.innerWidth;
+        this.y = Math.random() * window.innerHeight;
+        this.vx = 0; this.vy = 0;
+        this.baseSize = window.innerWidth < 600 ? 22 : 28;
+        this.opacity = 0;
+        this.index = i;
+    }
+
+    update(isMoving) {
+        if (isMoving) {
+            let targetX, targetY;
+            if (this.index === 0) {
+                targetX = mouse.x; targetY = mouse.y;
+            } else {
+                const leader = particles[this.index - 1];
+                if (leader) {
+                    targetX = leader.x; targetY = leader.y;
+                } else {
+                    targetX = mouse.x; targetY = mouse.y;
+                }
+            }
+            this.opacity = Math.min(this.opacity + 0.05, 1);
+            let dx = targetX - this.x;
+            let dy = targetY - this.y;
+            this.vx = dx * 0.22;
+            this.vy = dy * 0.22;
+        } else {
+            this.vx += (Math.random() - 0.5) * 1.2;
+            this.vy += (Math.random() - 0.5) * 1.2;
+            this.opacity = Math.max(this.opacity - 0.02, 0.05);
+        }
+        this.x += this.vx; this.y += this.vy;
+    }
+
+    draw() {
+        ctx.font = `bold ${this.baseSize}px Georgia`;
+        if (Date.now() - mouse.lastMove < 150) {
+            ctx.fillStyle = `rgba(192, 192, 192, ${this.opacity})`;
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = `rgba(255, 255, 255, ${this.opacity * 0.4})`;
+        } else {
+            ctx.fillStyle = `rgba(40, 40, 40, ${this.opacity})`;
+            ctx.shadowBlur = 0;
+        }
+        ctx.fillText(this.char, this.x, this.y);
+    }
+}
+
+function updateLog(text) {
+    const entry = document.createElement('div');
+    entry.style.marginBottom = "8px";
+    entry.innerText = `> ${text}`;
+    logContainer.appendChild(entry);
+    logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+function updateUI() {
+    chapterInfo.innerText = getTitle(currentSet);
+}
+
+function handleInteraction(x, y) {
+    if (isPaused) return;
+
+    mouse.x = x; mouse.y = y;
+    mouse.lastMove = Date.now();
+
+    levelProgress += 0.25;
+    if (levelProgress >= 100) {
+        levelProgress = 0;
+        const currentText = confessionSets[currentSet][currentLevel];
+        updateLog(currentText);
+        currentLevel++;
+
+        const limit = getStatementsCount(currentSet);
+        if (currentLevel >= limit) {
+            currentLevel = 0;
+            currentSet++;
+            if (currentSet >= confessionSets.length) {
+                currentSet = confessionSets.length - 1;
+            }
+            updateUI();
+            setTrackForTitle(getTitle(currentSet));
+            if (musicEnabled) handleAudioPlay(getTitle(currentSet));
+        }
+        createParticles(confessionSets[currentSet][currentLevel]);
+    }
+}
+
+function createParticles(text) {
+    if (!text) return;
+    particles = text.split("").map((char, i) => new Particle(char, i));
+}
+
+window.addEventListener('mousemove', (e) => handleInteraction(e.clientX, e.clientY));
+window.addEventListener('touchmove', (e) => {
+    if (e.target.closest && e.target.closest('#log-container')) return;
+    e.preventDefault();
+    handleInteraction(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: false });
+
+function animate() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const isMoving = Date.now() - mouse.lastMove < 150;
+    particles.forEach(p => { p.update(isMoving); p.draw(); });
+    requestAnimationFrame(animate);
+}
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+updateUI();
+setTrackForTitle(getTitle(currentSet));
+updateAudioToggle();
+createParticles(confessionSets[0][0]);
+animate();
+</script>
+</body>
+</html>
